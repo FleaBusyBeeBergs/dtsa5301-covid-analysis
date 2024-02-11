@@ -1,0 +1,213 @@
+---
+title: "covid-19-analysis"
+author: "Anonymous Potato"
+date: "2024-02-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+
+library(tidyverse)
+library(lubridate)
+```
+```{r import_data}
+
+# base url 
+url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+# file urls
+file_names <- c("time_series_covid19_confirmed_global.csv",
+                "time_series_covid19_deaths_global.csv",
+                "time_series_covid19_confirmed_US.csv",
+                "time_series_covid19_deaths_US.csv")
+
+urls <- str_c(url_in,file_names)
+```
+
+```{r read_data, message=FALSE}
+
+global_cases <- read_csv(urls[1])
+global_deaths <- read_csv(urls[2])
+#us_cases <- read_csv(urls[3])
+#us_deaths <- read_csv(urls[4])
+```
+
+```{r tidy_global_cases}
+
+global_cases <-global_cases %>% 
+  pivot_longer(cols = -c('Province/State', 
+                         'Country/Region', 
+                         Lat, 
+                         Long),
+               names_to = 'date', 
+               values_to = 'cases') %>% 
+  select(-c(Lat, Long))
+
+```
+
+```{r tidy_global_deaths}
+
+global_deaths <-global_deaths %>% 
+  pivot_longer(cols = -c('Province/State', 
+                         'Country/Region', 
+                         Lat, 
+                         Long),
+               names_to = 'date', 
+               values_to = 'deaths') %>% 
+  select(-c(Lat, Long))
+```
+
+
+```{r concat_global_df, date_series}
+
+global <- global_cases %>% 
+  full_join(global_deaths) %>% 
+  rename(Country_Region = `Country/Region`,
+         Province_State = `Province/State`) %>% 
+  mutate(date = mdy(date))
+```
+
+```{r}
+summary(global)
+```
+
+
+```{r}
+
+global <- global %>% 
+  filter(cases > 0)
+
+summary(global)
+```
+
+```{r check_max_cases}
+
+global %>% filter(cases > 100000000)
+```
+
+```{r canada_subset}
+
+canada <- global %>% 
+  filter(Country_Region == 'Canada') %>% 
+  rename(Province = `Province_State`)
+
+head(canada)
+```
+
+```{r}
+summary(canada)
+```
+
+```{r unique_prov}
+
+unique(canada$Province)
+
+```
+```{r}
+colnames(canada)
+```
+
+
+```{r clean_prov}
+
+canada <- subset(canada, !(Province %in% c('Diamond Princess', 'Grand Princess', 'Repatriated Travellers')))
+```
+
+```{r plot_natl_cases}
+
+natl_cases <- canada %>% 
+  group_by(date) %>% 
+  summarise(total = sum(cases, na.rm = TRUE))
+
+
+cases <- ggplot(natl_cases, aes(x = date, y = total)) +
+  geom_point(colour = 'darkblue') +
+  xlab('Date') +
+  ylab('Number of cases (linear scale)') +
+  ggtitle('Covid-19 cases in Canada, Feb 2020 - Mar 2023')
+
+cases
+```
+
+
+```{r plot_prov_cases}
+
+prov_cases <- ggplot(canada, aes(x = date, y = cases)) +
+  geom_line(size = 1.5, colour = 'darkblue') +
+  scale_y_log10() +
+  facet_wrap(~ Province) +
+  xlab('Date') +
+  ylab('Number of cases (logarithmic scale)')
+  ggtitle('Covid-19 cases in Canada, Feb 2020 - Mar 2023')
+
+prov_cases
+#int_cases <- ggplotly(cases) 
+
+#int_cases
+```
+
+```{r plot_natl_deaths}
+
+# filter out 0 values so that log scale will work
+canada_no_deaths <- canada %>% 
+  filter(deaths >0)
+
+# sum provincial daily deaths
+natl_deaths <- canada_no_deaths %>% 
+  group_by(date) %>% 
+  summarise(total = sum(deaths, na.rm = TRUE))
+
+# plot
+deaths <- ggplot(natl_deaths, aes(x = date, y = total)) +
+  geom_point(colour = 'darkred') +
+  xlab('Date') +
+  ylab('Number of deaths (linear scale)') +
+  ggtitle('Covid-19 deaths in Canada, Feb 2020 - Mar 2023')
+
+deaths
+```
+
+```{r}
+prov_deaths <- ggplot(canada_no_deaths, aes(x = date, y = deaths)) +
+  geom_line(size = 1.5, colour = 'darkred') +
+  facet_wrap(~ Province) +
+  scale_y_log10() +
+  xlab('Date') +
+  ylab('Number of deaths (logarithmic scale)')
+  ggtitle('Covid-19 deaths in Canada, Feb 2020 - Mar 2023')
+
+prov_deaths
+```
+
+
+```{r lm}
+
+mod <- lm(deaths ~ cases, data = canada)
+
+summary(mod)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
