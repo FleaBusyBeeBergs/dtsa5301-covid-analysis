@@ -128,7 +128,7 @@ cases <- ggplot(natl_cases, aes(x = date, y = total)) +
   geom_point(colour = 'darkblue') +
   xlab('Date') +
   ylab('Number of cases (linear scale)') +
-  ggtitle('Covid-19 cases in Canada, Feb 2020 - Mar 2023')
+  ggtitle('Fig. 1: Cumulative Covid-19 cases in Canada, Feb 2020 - Mar 2023')
 
 cases
 ```
@@ -141,8 +141,8 @@ prov_cases <- ggplot(canada, aes(x = date, y = cases)) +
   scale_y_log10() +
   facet_wrap(~ Province) +
   xlab('Date') +
-  ylab('Number of cases (logarithmic scale)')
-  ggtitle('Covid-19 cases in Canada, Feb 2020 - Mar 2023')
+  ylab('Number of cases (logarithmic scale)') +
+  ggtitle('Fig. 2: Cumulative Covid-19 cases in Canada by province, Feb 2020 - Mar 2023')
 
 prov_cases
 #int_cases <- ggplotly(cases) 
@@ -166,19 +166,19 @@ deaths <- ggplot(natl_deaths, aes(x = date, y = total)) +
   geom_point(colour = 'darkred') +
   xlab('Date') +
   ylab('Number of deaths (linear scale)') +
-  ggtitle('Covid-19 deaths in Canada, Feb 2020 - Mar 2023')
+  ggtitle('Fig. 3: Cumulative Covid-19 deaths in Canada, Feb 2020 - Mar 2023')
 
 deaths
 ```
 
-```{r}
+```{r }
 prov_deaths <- ggplot(canada_no_deaths, aes(x = date, y = deaths)) +
   geom_line(size = 1.5, colour = 'darkred') +
   facet_wrap(~ Province) +
   scale_y_log10() +
   xlab('Date') +
-  ylab('Number of deaths (logarithmic scale)')
-  ggtitle('Covid-19 deaths in Canada, Feb 2020 - Mar 2023')
+  ylab('Number of deaths (logarithmic scale)') +
+  ggtitle('Fig. 4: Covid-19 deaths in Canada by province, Feb 2020 - Mar 2023')
 
 prov_deaths
 ```
@@ -186,19 +186,119 @@ prov_deaths
 
 ```{r lm}
 
-mod <- lm(deaths ~ cases, data = canada)
+model_1 <- lm(deaths ~ cases, data = canada)
 
-summary(mod)
+summary(model_1)
+```
+
+```{r predict}
+
+canada$predictions <- predict(model_1)
 ```
 
 
+```{r}
+mod_1_plot <- ggplot(canada) +
+  geom_point(aes(x = cases, y = deaths, colour = 'Actual'), alpha = 0.5) +
+  geom_point(aes(x = cases, y = predictions, colour = 'Predicted'), size = 3) +
+  labs(x = 'Cases', y = 'Deaths', 
+       title = 'Fig. 5: Observed vs. predicted deaths per number of cases') +
+  scale_colour_manual(values = c('Actual' = 'darkorange', 'Predicted' = 'blue'),
+                      labels = c('Actual', 'Predicted')) +
+       
+  theme_minimal()  
+
+mod_1_plot
+```
+
+```{r}
+canada <- canada %>% 
+  arrange(Province, date) %>% 
+  group_by(Province) %>% 
+  mutate(new_cases = cases - lag(cases, default = first(cases)))
+
+canada
+```
+
+```{r}
+canada <- canada %>% 
+  arrange(Province, date) %>% 
+  group_by(Province) %>% 
+  mutate(new_deaths = deaths - lag(deaths, default = first(deaths)))
+
+head(canada)
+```
+```{r}
+canada <- subset(canada, !(new_cases < 0 | new_deaths < 0))
+
+```
+
+```{r}
+
+canada <- subset(canada, !(Province == 'Ontario' & date == '2022-04-13'))
+```
 
 
+```{r}
+
+model_2 <- lm(new_deaths ~ new_cases, data = canada)
+
+summary(model_2)
+```
+
+```{r}
+canada$new_predictions <- predict(model_2)
+
+canada
+```
+
+```{r}
+oddballs  
+```
 
 
+```{r}
+mod_2_plot <- ggplot(canada) +
+  geom_point(aes(x = new_cases, y = new_deaths, colour = 'Actual'), alpha = 0.5) +
+  geom_point(aes(x = new_cases, y = new_predictions, colour = 'Predicted'), size = 3) +
+  labs(x = 'Cases', y = 'Deaths', 
+       title = 'Fig. 5: Observed vs. predicted deaths per number of cases') +
+  scale_colour_manual(values = c('Actual' = 'darkred', 'Predicted' = 'blue'),
+                      labels = c('Actual', 'Predicted')) +
+       
+  theme_minimal()  
 
+mod_2_plot
+  
+```
 
+```{r}
 
+library(plotly)
+```
+
+```{r}
+
+new_cases_deaths <- ggplot(canada, aes(x = date)) +
+  geom_bar(aes(y = new_cases), stat = 'identity', fill = 'blue') +
+  geom_bar(aes(y = new_deaths), stat = 'identity', fill = 'darkred', alpha = 1) +
+  stat_summary(aes(y = new_cases), fun = "mean", geom = "smooth", method = "loess", color = "blue") +
+  stat_summary(aes(y = new_deaths), fun = "mean", geom = "smooth", method = "loess", color = "darkred") +
+  labs(title = 'New cases and deaths over time',
+      x = 'Date',
+      y = 'Count') + 
+  theme_minimal() +
+  scale_y_continuous(trans = 'log10')
+
+interactive <- ggplotly(new_cases_deaths)
+
+interactive
+```
+
+```{r}
+canada %>% filter(date > '2022-04-10' & date < '2022-04-15')
+```
+##### There was no change in the cumulative number of cases in Ontario between the 11th and 12th of April. I interpret this as the data from the 12th was lumped in together with the data from the 13th - maybe someone wasn't around to enter it or it was submitted late. Regardless, Im going to cut this outlier from the data 
 
 
 
