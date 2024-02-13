@@ -313,6 +313,13 @@ interactive
 
 1. Code copied directly from dtsa5301 course lectures & materials
 
+# Environment
+
+```{r}
+sessionInfo()
+```
+
+
 
 
 
