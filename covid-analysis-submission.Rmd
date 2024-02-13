@@ -9,21 +9,33 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+
 ```{r libraries}
 
 library(tidyverse)
 library(lubridate)
 ```
+
+# Introduction
+
+This project was completed for DTSA5301 as part of the MSc-DS at the University of Colorado, Boulder. The data was acquired from the links below and contains the following information:
+
+* time_series_covid19_confirmed_global.csv: Date, Province/State, Country/Region, number of confirmed cases.
+* time_series_covid19_deaths_global.csv: Date, Province/State, Country/Region, number of deaths.
+
 ```{r import_data}
+# reference 1
 
 # base url 
 url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
 
 # file urls
 file_names <- c("time_series_covid19_confirmed_global.csv",
-                "time_series_covid19_deaths_global.csv",
-                "time_series_covid19_confirmed_US.csv",
-                "time_series_covid19_deaths_US.csv")
+                "time_series_covid19_deaths_global.csv")
+
+# population data lookup
+uid <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv"
 
 urls <- str_c(url_in,file_names)
 ```
@@ -32,8 +44,7 @@ urls <- str_c(url_in,file_names)
 
 global_cases <- read_csv(urls[1])
 global_deaths <- read_csv(urls[2])
-#us_cases <- read_csv(urls[3])
-#us_deaths <- read_csv(urls[4])
+global_population <- read_csv(uid)
 ```
 
 ```{r tidy_global_cases}
@@ -75,7 +86,6 @@ global <- global_cases %>%
 summary(global)
 ```
 
-
 ```{r}
 
 global <- global %>% 
@@ -84,38 +94,46 @@ global <- global %>%
 summary(global)
 ```
 
-```{r check_max_cases}
-
-global %>% filter(cases > 100000000)
-```
-
-```{r canada_subset}
-
-canada <- global %>% 
-  filter(Country_Region == 'Canada') %>% 
-  rename(Province = `Province_State`)
-
-head(canada)
-```
-
 ```{r}
-summary(canada)
+canada <- global %>% 
+  filter(Country_Region == 'Canada')
+
+canada
 ```
+
 
 ```{r unique_prov}
 
-unique(canada$Province)
+unique(canada$Province_State)
 
 ```
-```{r}
-colnames(canada)
-```
-
 
 ```{r clean_prov}
 
-canada <- subset(canada, !(Province %in% c('Diamond Princess', 'Grand Princess', 'Repatriated Travellers')))
+canada <- subset(canada, !(Province_State %in% c('Diamond Princess', 'Grand Princess', 'Repatriated Travellers')))
 ```
+
+```{r canada_pop}
+
+canada_pop <- global_population %>% 
+  filter(Country_Region == 'Canada') %>% 
+  select(Province_State, Country_Region, Population)
+
+canada_pop <- subset(canada_pop, !(Province_State %in% c('Diamond Princess', 'Grand Princess', 'Recovered')))
+
+canada_pop
+```
+
+```{r}
+canada <- canada %>% 
+  left_join(canada_pop, by = 'Province_State') %>% 
+  select(-c(Country_Region.x, Country_Region.y))
+
+canada
+```
+
+
+
 
 ```{r plot_natl_cases}
 
@@ -139,15 +157,12 @@ cases
 prov_cases <- ggplot(canada, aes(x = date, y = cases)) +
   geom_line(size = 1.5, colour = 'darkblue') +
   scale_y_log10() +
-  facet_wrap(~ Province) +
+  facet_wrap(~ Province_State) +
   xlab('Date') +
   ylab('Number of cases (logarithmic scale)') +
   ggtitle('Fig. 2: Cumulative Covid-19 cases in Canada by province, Feb 2020 - Mar 2023')
 
 prov_cases
-#int_cases <- ggplotly(cases) 
-
-#int_cases
 ```
 
 ```{r plot_natl_deaths}
@@ -174,7 +189,7 @@ deaths
 ```{r }
 prov_deaths <- ggplot(canada_no_deaths, aes(x = date, y = deaths)) +
   geom_line(size = 1.5, colour = 'darkred') +
-  facet_wrap(~ Province) +
+  facet_wrap(~ Province_State) +
   scale_y_log10() +
   xlab('Date') +
   ylab('Number of deaths (logarithmic scale)') +
@@ -213,8 +228,8 @@ mod_1_plot
 
 ```{r}
 canada <- canada %>% 
-  arrange(Province, date) %>% 
-  group_by(Province) %>% 
+  arrange(Province_State, date) %>% 
+  group_by(Province_State) %>% 
   mutate(new_cases = cases - lag(cases, default = first(cases)))
 
 canada
@@ -222,12 +237,14 @@ canada
 
 ```{r}
 canada <- canada %>% 
-  arrange(Province, date) %>% 
-  group_by(Province) %>% 
+  arrange(Province_State, date) %>% 
+  group_by(Province_State) %>% 
   mutate(new_deaths = deaths - lag(deaths, default = first(deaths)))
 
 head(canada)
 ```
+###### Removal of outliers
+
 ```{r}
 canada <- subset(canada, !(new_cases < 0 | new_deaths < 0))
 
@@ -235,7 +252,7 @@ canada <- subset(canada, !(new_cases < 0 | new_deaths < 0))
 
 ```{r}
 
-canada <- subset(canada, !(Province == 'Ontario' & date == '2022-04-13'))
+canada <- subset(canada, !(Province_State == 'Ontario' & date == '2022-04-13'))
 ```
 
 
@@ -253,13 +270,9 @@ canada
 ```
 
 ```{r}
-oddballs  
-```
 
-
-```{r}
 mod_2_plot <- ggplot(canada) +
-  geom_point(aes(x = new_cases, y = new_deaths, colour = 'Actual'), alpha = 0.5) +
+  geom_point(aes(x = new_cases, y = new_deaths, colour = 'Actual'), alpha = 0.2) +
   geom_point(aes(x = new_cases, y = new_predictions, colour = 'Predicted'), size = 3) +
   labs(x = 'Cases', y = 'Deaths', 
        title = 'Fig. 5: Observed vs. predicted deaths per number of cases') +
@@ -282,11 +295,9 @@ library(plotly)
 new_cases_deaths <- ggplot(canada, aes(x = date)) +
   geom_bar(aes(y = new_cases), stat = 'identity', fill = 'blue') +
   geom_bar(aes(y = new_deaths), stat = 'identity', fill = 'darkred', alpha = 1) +
-  stat_summary(aes(y = new_cases), fun = "mean", geom = "smooth", method = "loess", color = "blue") +
-  stat_summary(aes(y = new_deaths), fun = "mean", geom = "smooth", method = "loess", color = "darkred") +
-  labs(title = 'New cases and deaths over time',
+  labs(title = 'Fig. 6: New cases and deaths over time',
       x = 'Date',
-      y = 'Count') + 
+      y = 'Count (logarithmic scale)') + 
   theme_minimal() +
   scale_y_continuous(trans = 'log10')
 
@@ -295,13 +306,12 @@ interactive <- ggplotly(new_cases_deaths)
 interactive
 ```
 
-```{r}
-canada %>% filter(date > '2022-04-10' & date < '2022-04-15')
-```
-##### There was no change in the cumulative number of cases in Ontario between the 11th and 12th of April. I interpret this as the data from the 12th was lumped in together with the data from the 13th - maybe someone wasn't around to enter it or it was submitted late. Regardless, Im going to cut this outlier from the data 
 
 
 
+# References
+
+1. Code copied directly from dtsa5301 course lectures & materials
 
 
 
