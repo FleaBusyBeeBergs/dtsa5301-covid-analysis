@@ -133,29 +133,40 @@ canada
 ```
 
 
-
-
 ```{r plot_natl_cases}
+
+canada_no_deaths <- canada %>% 
+  filter(deaths > 0)
+
+natl_deaths <- canada %>% 
+  group_by(date) %>% 
+  summarise(total_deaths = sum(deaths, na.rm = TRUE))
 
 natl_cases <- canada %>% 
   group_by(date) %>% 
-  summarise(total = sum(cases, na.rm = TRUE))
+  summarise(total_cases= sum(cases, na.rm = TRUE))
 
+combined_data <- merge(natl_cases, natl_deaths, by = 'date', all = TRUE)
 
-cases <- ggplot(natl_cases, aes(x = date, y = total)) +
-  geom_point(colour = 'darkblue') +
+combined_plot <- ggplot(combined_data, aes(x = date)) +
+  geom_point(aes(y = total_cases, colour = 'Cases'), size = 1.5) +
+  geom_point(aes(y = total_deaths, colour = 'Deaths'), size = 1.5) +
+  scale_y_log10() +
+  scale_color_manual(values = c("Cases" = "darkblue", "Deaths" = "darkred")) +
   xlab('Date') +
-  ylab('Number of cases (linear scale)') +
-  ggtitle('Fig. 1: Cumulative Covid-19 cases in Canada, Feb 2020 - Mar 2023')
+  ylab('Number of cases (logarithmic scale)') +
+  ggtitle('Fig. 1: Cumulative Covid-19 cases and deaths in Canada, Feb 2020 - Mar 2023') +
+  theme(legend.title = element_blank())
 
-cases
+combined_plot
 ```
 
 
 ```{r plot_prov_cases}
 
-prov_cases <- ggplot(canada, aes(x = date, y = cases)) +
-  geom_line(size = 1.5, colour = 'darkblue') +
+prov_cases <- ggplot(canada) +
+  geom_line(aes(x = date, y = cases), size = 1.5, colour = 'darkblue') +
+  geom_line(aes(x = date, y = deaths), size = 1.5, colour = 'darkred') +
   scale_y_log10() +
   facet_wrap(~ Province_State) +
   xlab('Date') +
@@ -164,86 +175,61 @@ prov_cases <- ggplot(canada, aes(x = date, y = cases)) +
 
 prov_cases
 ```
+# Modelling
 
-```{r plot_natl_deaths}
-
-# filter out 0 values so that log scale will work
-canada_no_deaths <- canada %>% 
-  filter(deaths >0)
-
-# sum provincial daily deaths
-natl_deaths <- canada_no_deaths %>% 
-  group_by(date) %>% 
-  summarise(total = sum(deaths, na.rm = TRUE))
-
-# plot
-deaths <- ggplot(natl_deaths, aes(x = date, y = total)) +
-  geom_point(colour = 'darkred') +
-  xlab('Date') +
-  ylab('Number of deaths (linear scale)') +
-  ggtitle('Fig. 3: Cumulative Covid-19 deaths in Canada, Feb 2020 - Mar 2023')
-
-deaths
-```
-
-```{r }
-prov_deaths <- ggplot(canada_no_deaths, aes(x = date, y = deaths)) +
-  geom_line(size = 1.5, colour = 'darkred') +
-  facet_wrap(~ Province_State) +
-  scale_y_log10() +
-  xlab('Date') +
-  ylab('Number of deaths (logarithmic scale)') +
-  ggtitle('Fig. 4: Covid-19 deaths in Canada by province, Feb 2020 - Mar 2023')
-
-prov_deaths
-```
-
+Here, I'll model the number of covid-19 deaths as a function of cases.
 
 ```{r lm}
 
-model_1 <- lm(deaths ~ cases, data = canada)
+model <- lm(total_deaths ~ total_cases, data = combined_data)
 
-summary(model_1)
+summary(model)
 ```
+Here the R-squared value is 0.9382, meaning about 94%% of the variance in the number of deaths is predictable from the number of number of given cases.
+
+Now let's see how the predictions for this model fit the data set:
 
 ```{r predict}
 
-canada$predictions <- predict(model_1)
+combined_data$predictions <- predict(model)
 ```
 
 
 ```{r}
-mod_1_plot <- ggplot(canada) +
-  geom_point(aes(x = cases, y = deaths, colour = 'Actual'), alpha = 0.5) +
-  geom_point(aes(x = cases, y = predictions, colour = 'Predicted'), size = 3) +
+mod_plot <- ggplot(combined_data) +
+  geom_point(aes(x = total_cases, y = total_deaths, colour = 'Actual'), alpha = 0.5) +
+  geom_point(aes(x = total_cases, y = predictions, colour = 'Predicted'), size = 3) +
   labs(x = 'Cases', y = 'Deaths', 
        title = 'Fig. 5: Observed vs. predicted deaths per number of cases') +
-  scale_colour_manual(values = c('Actual' = 'darkorange', 'Predicted' = 'blue'),
+  scale_colour_manual(values = c('Actual' = 'darkorange', 'Predicted' = 'purple'),
                       labels = c('Actual', 'Predicted')) +
        
-  theme_minimal()  
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-mod_1_plot
+mod_plot
+```
+In figure 5 we can see that the fit of the predicted cases is a fairly close to the actual values.
+
+```{r}
+#canada <- canada %>% 
+#  arrange(Province_State, date) %>% 
+#  group_by(Province_State) %>% 
+#  mutate(new_cases = cases - lag(cases, default = first(cases)))
+
+#canada
 ```
 
 ```{r}
-canada <- canada %>% 
-  arrange(Province_State, date) %>% 
-  group_by(Province_State) %>% 
-  mutate(new_cases = cases - lag(cases, default = first(cases)))
+#canada <- canada %>% 
+#  arrange(Province_State, date) %>% 
+#  group_by(Province_State) %>% 
+#  mutate(new_deaths = deaths - lag(deaths, default = first(deaths)))
 
-canada
-```
-
-```{r}
-canada <- canada %>% 
-  arrange(Province_State, date) %>% 
-  group_by(Province_State) %>% 
-  mutate(new_deaths = deaths - lag(deaths, default = first(deaths)))
-
-head(canada)
+#head(canada)
 ```
 ###### Removal of outliers
+Outliers were found through exploratory analysis
 
 ```{r}
 canada <- subset(canada, !(new_cases < 0 | new_deaths < 0))
@@ -255,36 +241,6 @@ canada <- subset(canada, !(new_cases < 0 | new_deaths < 0))
 canada <- subset(canada, !(Province_State == 'Ontario' & date == '2022-04-13'))
 ```
 
-
-```{r}
-
-model_2 <- lm(new_deaths ~ new_cases, data = canada)
-
-summary(model_2)
-```
-
-```{r}
-canada$new_predictions <- predict(model_2)
-
-canada
-```
-
-```{r}
-
-mod_2_plot <- ggplot(canada) +
-  geom_point(aes(x = new_cases, y = new_deaths, colour = 'Actual'), alpha = 0.2) +
-  geom_point(aes(x = new_cases, y = new_predictions, colour = 'Predicted'), size = 3) +
-  labs(x = 'Cases', y = 'Deaths', 
-       title = 'Fig. 5: Observed vs. predicted deaths per number of cases') +
-  scale_colour_manual(values = c('Actual' = 'darkred', 'Predicted' = 'blue'),
-                      labels = c('Actual', 'Predicted')) +
-       
-  theme_minimal()  
-
-mod_2_plot
-  
-```
-
 ```{r}
 
 library(plotly)
@@ -293,20 +249,23 @@ library(plotly)
 ```{r}
 
 new_cases_deaths <- ggplot(canada, aes(x = date)) +
-  geom_bar(aes(y = new_cases), stat = 'identity', fill = 'blue') +
-  geom_bar(aes(y = new_deaths), stat = 'identity', fill = 'darkred', alpha = 1) +
-  labs(title = 'Fig. 6: New cases and deaths over time',
+  geom_bar(aes(y = new_cases, fill = 'New Cases'), stat = 'identity', show.legend = TRUE) +
+  geom_bar(aes(y = new_deaths, fill = 'New Deaths'), stat = 'identity', show.legend = TRUE, alpha = 1) +
+  labs(title = 'Fig. 6: Interactive plot - New cases and deaths over time',
       x = 'Date',
-      y = 'Count (logarithmic scale)') + 
+      y = 'Count (logarithmic scale)',
+      fill = 'Legend') + 
   theme_minimal() +
-  scale_y_continuous(trans = 'log10')
+  scale_y_continuous(trans = 'log10') +
+  scale_fill_manual(values = c("blue", "darkred"), 
+                    labels = c("New Cases", "New Deaths")) 
 
 interactive <- ggplotly(new_cases_deaths)
 
-interactive
+print(interactive)
 ```
 
-
+Figure 6 shows that new deaths follows a similiar pattern to the new cases, but with a lower 'amplitude'. It also appears that the 'peaks' in the deaths don't line up directly under the 'peaks' for new cases, but are shifted ever-so-slightly to the left . I interpret this as there is a time delay between getting the virus and a person dying from it. This raises another question - what would be the time lag between new cases and new deaths? This question, unfortunately, will have to be put off for further study.
 
 
 # References
